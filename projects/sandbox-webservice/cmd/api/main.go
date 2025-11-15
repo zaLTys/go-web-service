@@ -1,25 +1,48 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 )
 
+const version = "1.0.0"
+
+type config struct {
+	port int
+	env  string
+}
+
+type application struct {
+	config config
+	logger *log.Logger
+}
+
 func main() {
+	var cfg config
+
+	flag.IntVar(&cfg.port, "port", 4000, "API server port")
+	flag.StringVar(&cfg.env, "env", "dev", "API environment (dev|stage|prod)")
+	flag.Parse()
+
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+
+	app := application{
+		config: cfg,
+		logger: logger,
+	}
+
+	addr := fmt.Sprintf(":%d", cfg.port)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/healthcheck", healthcheck)
+	mux.HandleFunc("/v1/healthcheck", app.healthcheck)
 
-	err := http.ListenAndServe(":4000", mux)
-
+	logger.Printf("Starting %s server on %s", cfg.env, addr)
+	err := http.ListenAndServe(addr, mux)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-}
-
-func healthcheck(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "status: available")
-	fmt.Fprintf(w, "environment: %s\n", "dev")
-	fmt.Fprintf(w, "version: %s\n", "1.0.0")
 }
