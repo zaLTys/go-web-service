@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 func (app *application) healthcheck(w http.ResponseWriter, r *http.Request) {
@@ -47,13 +48,30 @@ func (app *application) getUpdateDeleteEntitiesHandler(w http.ResponseWriter, r 
 }
 
 func (app *application) getEntity(w http.ResponseWriter, r *http.Request) {
-
+	id := r.URL.Path[len("/v1/entities/"):]
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+	}
+	fmt.Fprintf(w, "Display the details of entity with ID: %d", idInt)
 }
 
 func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Path[len("/v1/entities/"):]
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+	}
+	fmt.Fprintf(w, "Update the details of entity with ID: %d", idInt)
 
 }
 
 func (app *application) deleteEntity(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Path[len("/v1/entities/"):]
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+	}
+	fmt.Fprintf(w, "Delete an entity with ID: %d", idInt)
 
 }
