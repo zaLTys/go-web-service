@@ -5,9 +5,9 @@ import (
 )
 
 type Entity struct {
-	ID        int64
-	Name      string
-	Labels    []string
-	Version   int32
-	CreatedAt time.Time
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Labels    []string  `json:"labels,omitempty"`
+	Version   int32     `json:"-"`
+	CreatedAt time.Time `json:"-"` //wont be displayed after marshaling
 }

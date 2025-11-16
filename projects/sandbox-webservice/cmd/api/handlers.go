@@ -19,7 +19,7 @@ func (app *application) healthcheck(w http.ResponseWriter, r *http.Request) {
 		"environment": app.config.env,
 		"version":     version,
 	}
-	js, err := json.Marshal(data)
+	js, err := json.MarshalIndent(data, "", "\t")
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -48,15 +48,10 @@ func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Re
 				Version:   1,
 			},
 		}
-
-		js, err := json.Marshal(entities)
-		if err != nil {
+		if err := app.writeJson(w, http.StatusOK, envelope{"entities": entities}); err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
-
-		js = append(js, '\n')
-		w.Header().Set("Content-type", "application/json")
-		w.Write(js)
 	}
 
 	if r.Method == http.MethodPost {
@@ -100,14 +95,10 @@ func (app *application) getEntity(w http.ResponseWriter, r *http.Request) {
 		Version:   1,
 	}
 
-	js, err := json.Marshal(entity)
-	if err != nil {
+	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
-
-	js = append(js, '\n')
-	w.Header().Set("Content-type", "application/json")
-	w.Write(js)
 }
 
 func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
