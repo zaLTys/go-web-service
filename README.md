@@ -29,3 +29,15 @@ GRANT
 
 entities=# grant usage, select on sequence entities_id_seq to entityuser;
 GRANT
+
+
+[System.Environment]::SetEnvironmentVariable(
+    "ENTITIES_DB_DSN",
+    "postgres://entityuser:password@localhost/entities?sslmode=disable",
+    "User"
+)
+
+
+go run .\cmd\api\
+2025/11/16 09:12:09 db conn pool established
+2025/11/16 09:12:09 Starting dev server on :4000   

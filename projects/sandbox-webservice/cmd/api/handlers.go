@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"sandbox-webservice/internal/data"
 	"strconv"
-	"time"
+
+	"sandbox-webservice/internal/data"
 )
 
 func (app *application) healthcheck(w http.ResponseWriter, r *http.Request) {
@@ -32,23 +33,13 @@ func (app *application) healthcheck(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		entities := []data.Entity{
-			{
-				ID:        1,
-				CreatedAt: time.Now(),
-				Name:      "name1",
-				Labels:    []string{"Go lang", "Is", "all right"},
-				Version:   1,
-			},
-			{
-				ID:        2,
-				CreatedAt: time.Now(),
-				Name:      "name2",
-				Labels:    []string{"Go lang2", "Is2", "all right2"},
-				Version:   1,
-			},
+		entities, err := app.models.Entities.GetAll()
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
-		if err := app.writeJson(w, http.StatusOK, envelope{"entities": entities}); err != nil {
+
+		if err := app.writeJson(w, http.StatusOK, envelope{"entities": entities}, nil); err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -56,7 +47,6 @@ func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Re
 
 	if r.Method == http.MethodPost {
 		var input struct {
-			ID     int64    `json:"id"`
 			Name   string   `json:"name"`
 			Labels []string `json:"labels"`
 		}
@@ -67,8 +57,29 @@ func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		fmt.Fprintf(w, "%v\n", input)
+		entity := &data.Entity{
+			Name:   input.Name,
+			Labels: input.Labels,
+		}
+
+		err = app.models.Entities.Insert(entity)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		headers := make(http.Header)
+		headers.Set("Location", fmt.Sprintf("v1/entities/%d", entity.ID))
+
+		// Write the JSON response with a 201 Created status code and the Location header set.
+		err = app.writeJson(w, http.StatusCreated, envelope{"entity": entity}, headers)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	}
+	return
+
 }
 
 func (app *application) getUpdateDeleteEntitiesHandler(w http.ResponseWriter, r *http.Request) {
@@ -97,17 +108,21 @@ func (app *application) getEntity(w http.ResponseWriter, r *http.Request) {
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
 	}
 
-	entity := data.Entity{
-		ID:        idInt,
-		CreatedAt: time.Now(),
-		Name:      "name",
-		Labels:    []string{"Go lang", "Is", "all right"},
-		Version:   1,
+	entity, err := app.models.Entities.Get(idInt)
+	if err != nil {
+		switch {
+		case errors.Is(err, errors.New("record not found")):
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		default:
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		return
 	}
 
-	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}); err != nil {
+	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}, nil); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -120,17 +135,20 @@ func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	}
 
+	entity, err := app.models.Entities.Get(idInt)
+	if err != nil {
+		switch {
+		case errors.Is(err, errors.New("record not found")):
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		default:
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	var input struct {
 		Name   *string  `json:"name"`
 		Labels []string `json:"labels"`
-	}
-
-	entity := data.Entity{
-		ID:        idInt,
-		CreatedAt: time.Now(),
-		Name:      "name",
-		Labels:    []string{"Go lang", "Is", "all right"},
-		Version:   1,
 	}
 
 	err = app.readJSON(w, r, &input)
@@ -147,7 +165,13 @@ func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
 		entity.Labels = input.Labels
 	}
 
-	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}); err != nil {
+	err = app.models.Entities.Update(entity)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}, nil); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -158,7 +182,24 @@ func (app *application) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
 	}
-	fmt.Fprintf(w, "Delete an entity with ID: %d", idInt)
+
+	err = app.models.Entities.Delete(idInt)
+	if err != nil {
+		switch {
+		case errors.Is(err, errors.New("record not found")):
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		default:
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	err = app.writeJson(w, http.StatusOK, envelope{"message": "entity successfully deleted"}, nil)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
 }
