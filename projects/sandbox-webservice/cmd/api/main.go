@@ -60,7 +60,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      app.route(),
+		Handler:      app.routes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

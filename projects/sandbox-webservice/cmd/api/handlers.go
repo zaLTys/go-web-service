@@ -2,147 +2,122 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"sandbox-webservice/internal/data"
+
+	"github.com/go-chi/chi/v5"
 )
 
+// -----------------------------------------------------------------------------
+// Health Check
+// -----------------------------------------------------------------------------
+
 func (app *application) healthcheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		return
-	}
 	data := map[string]string{
 		"status":      "available",
 		"environment": app.config.env,
 		"version":     version,
 	}
-	js, err := json.MarshalIndent(data, "", "\t")
+
+	js, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		app.serverError(w, err)
 		return
 	}
-	js = append(js, '\n')
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(js)
 }
 
-func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		entities, err := app.models.Entities.GetAll()
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
+// -----------------------------------------------------------------------------
+// Entities: List
+// -----------------------------------------------------------------------------
 
-		if err := app.writeJson(w, http.StatusOK, envelope{"entities": entities}, nil); err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
+func (app *application) listEntities(w http.ResponseWriter, r *http.Request) {
+	entities, err := app.models.Entities.GetAll()
+	if err != nil {
+		app.serverError(w, err)
+		return
 	}
 
-	if r.Method == http.MethodPost {
-		var input struct {
-			Name   string   `json:"name"`
-			Labels []string `json:"labels"`
-		}
-
-		err := app.readJSON(w, r, &input)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			return
-		}
-
-		entity := &data.Entity{
-			Name:   input.Name,
-			Labels: input.Labels,
-		}
-
-		err = app.models.Entities.Insert(entity)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		headers := make(http.Header)
-		headers.Set("Location", fmt.Sprintf("v1/entities/%d", entity.ID))
-
-		// Write the JSON response with a 201 Created status code and the Location header set.
-		err = app.writeJson(w, http.StatusCreated, envelope{"entity": entity}, headers)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-	}
-	return
-
+	app.writeJSON(w, http.StatusOK, envelope{"entities": entities}, nil)
 }
 
-func (app *application) getUpdateDeleteEntitiesHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		{
-			app.getEntity(w, r)
-		}
-	case http.MethodPut:
-		{
-			app.updateEntity(w, r)
-		}
-	case http.MethodDelete:
-		{
-			app.deleteEntity(w, r)
-		}
-	default:
-		{
-			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		}
+// -----------------------------------------------------------------------------
+// Entities: Create
+// -----------------------------------------------------------------------------
+
+func (app *application) createEntity(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name   string   `json:"name"`
+		Labels []string `json:"labels"`
 	}
+
+	if err := app.readJSON(w, r, &input); err != nil {
+		app.badRequest(w, err)
+		return
+	}
+
+	entity := &data.Entity{
+		Name:   input.Name,
+		Labels: input.Labels,
+	}
+
+	if err := app.models.Entities.Insert(entity); err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	headers := http.Header{}
+	headers.Set("Location", "/v1/entities/"+strconv.FormatInt(entity.ID, 10))
+
+	app.writeJSON(w, http.StatusCreated, envelope{"entity": entity}, headers)
 }
+
+// -----------------------------------------------------------------------------
+// Entities: Get
+// -----------------------------------------------------------------------------
 
 func (app *application) getEntity(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/v1/entities/"):]
-	idInt, err := strconv.ParseInt(id, 10, 64)
+	id, err := getIDParam(r)
 	if err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		app.notFound(w)
 		return
 	}
 
-	entity, err := app.models.Entities.Get(idInt)
+	entity, err := app.models.Entities.Get(id)
+	if err == data.ErrRecordNotFound {
+		app.notFound(w)
+		return
+	}
 	if err != nil {
-		switch {
-		case errors.Is(err, errors.New("record not found")):
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		default:
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		}
+		app.serverError(w, err)
 		return
 	}
 
-	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}, nil); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	app.writeJSON(w, http.StatusOK, envelope{"entity": entity}, nil)
 }
 
+// -----------------------------------------------------------------------------
+// Entities: Update
+// -----------------------------------------------------------------------------
+
 func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/v1/entities/"):]
-	idInt, err := strconv.ParseInt(id, 10, 64)
+	id, err := getIDParam(r)
 	if err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		app.notFound(w)
+		return
 	}
 
-	entity, err := app.models.Entities.Get(idInt)
+	entity, err := app.models.Entities.Get(id)
+	if err == data.ErrRecordNotFound {
+		app.notFound(w)
+		return
+	}
 	if err != nil {
-		switch {
-		case errors.Is(err, errors.New("record not found")):
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		default:
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		}
+		app.serverError(w, err)
 		return
 	}
 
@@ -151,9 +126,8 @@ func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
 		Labels []string `json:"labels"`
 	}
 
-	err = app.readJSON(w, r, &input)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	if err := app.readJSON(w, r, &input); err != nil {
+		app.badRequest(w, err)
 		return
 	}
 
@@ -161,45 +135,47 @@ func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
 		entity.Name = *input.Name
 	}
 
-	if len(input.Labels) > 0 {
+	if input.Labels != nil {
 		entity.Labels = input.Labels
 	}
 
-	err = app.models.Entities.Update(entity)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	if err := app.models.Entities.Update(entity); err != nil {
+		app.serverError(w, err)
 		return
 	}
 
-	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}, nil); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	app.writeJSON(w, http.StatusOK, envelope{"entity": entity}, nil)
 }
 
+// -----------------------------------------------------------------------------
+// Entities: Delete
+// -----------------------------------------------------------------------------
+
 func (app *application) deleteEntity(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/v1/entities/"):]
-	idInt, err := strconv.ParseInt(id, 10, 64)
+	id, err := getIDParam(r)
 	if err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		app.notFound(w)
 		return
 	}
 
-	err = app.models.Entities.Delete(idInt)
-	if err != nil {
-		switch {
-		case errors.Is(err, errors.New("record not found")):
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		default:
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	if err := app.models.Entities.Delete(id); err != nil {
+		if err == data.ErrRecordNotFound {
+			app.notFound(w)
+			return
 		}
+		app.serverError(w, err)
 		return
 	}
 
-	err = app.writeJson(w, http.StatusOK, envelope{"message": "entity successfully deleted"}, nil)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	app.writeJSON(w, http.StatusOK, envelope{"message": "entity successfully deleted"}, nil)
+}
 
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+// Extract URL param and parse it safely.
+func getIDParam(r *http.Request) (int64, error) {
+	idStr := chi.URLParam(r, "id")
+	return strconv.ParseInt(idStr, 10, 64)
 }
