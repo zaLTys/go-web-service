@@ -1,15 +1,13 @@
 package data
 
-import (
-	"database/sql"
-)
+import "database/sql"
 
 type Models struct {
-	Entities EntityModel
+	Entities EntityRepository
 }
 
-func NewModels(db *sql.DB) Models {
-	return Models{
-		Entities: EntityModel{DB: db},
+func NewModels(db *sql.DB) *Models {
+	return &Models{
+		Entities: &EntityModel{DB: db},
 	}
 }

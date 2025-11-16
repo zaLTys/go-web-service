@@ -22,6 +22,8 @@ type Entity struct {
 	CreatedAt time.Time `json:"-"`
 }
 
+var _ CRUDRepository[Entity] = (*EntityModel)(nil)
+
 type EntityModel struct {
 	DB *sql.DB
 }

@@ -24,7 +24,7 @@ type config struct {
 type application struct {
 	config config
 	logger *log.Logger
-	models data.Models
+	models *data.Models
 }
 
 func main() {
@@ -50,7 +50,7 @@ func main() {
 
 	logger.Printf("db conn pool established")
 
-	app := application{
+	app := &application{
 		config: cfg,
 		logger: logger,
 		models: data.NewModels(db),

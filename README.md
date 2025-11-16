@@ -41,3 +41,7 @@ GRANT
 go run .\cmd\api\
 2025/11/16 09:12:09 db conn pool established
 2025/11/16 09:12:09 Starting dev server on :4000   
+
+
+### RUN
+go run .\cmd\api\ -db-dsn="postgres://entityuser:password@localhost:5432/entities?sslmode=disable"
