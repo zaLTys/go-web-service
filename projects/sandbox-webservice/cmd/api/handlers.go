@@ -55,7 +55,19 @@ func (app *application) getCreateEntityHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	if r.Method == http.MethodPost {
-		fmt.Fprintln(w, "added new entity")
+		var input struct {
+			ID     int64    `json:"id"`
+			Name   string   `json:"name"`
+			Labels []string `json:"labels"`
+		}
+
+		err := app.readJSON(w, r, &input)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		fmt.Fprintf(w, "%v\n", input)
 	}
 }
 
@@ -107,8 +119,38 @@ func (app *application) updateEntity(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	}
-	fmt.Fprintf(w, "Update the details of entity with ID: %d", idInt)
 
+	var input struct {
+		Name   *string  `json:"name"`
+		Labels []string `json:"labels"`
+	}
+
+	entity := data.Entity{
+		ID:        idInt,
+		CreatedAt: time.Now(),
+		Name:      "name",
+		Labels:    []string{"Go lang", "Is", "all right"},
+		Version:   1,
+	}
+
+	err = app.readJSON(w, r, &input)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if input.Name != nil {
+		entity.Name = *input.Name
+	}
+
+	if len(input.Labels) > 0 {
+		entity.Labels = input.Labels
+	}
+
+	if err := app.writeJson(w, http.StatusOK, envelope{"entity": entity}); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (app *application) deleteEntity(w http.ResponseWriter, r *http.Request) {
